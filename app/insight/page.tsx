@@ -6,6 +6,7 @@ import {
   getSession,
   saveSession,
   formatDate,
+  upsertSessionPartial,
 } from "@/lib/storage";
 import type { Insight, Message, Session } from "@/lib/types";
 
@@ -35,15 +36,6 @@ function InsightInner() {
     }
 
     const existing = getSession(id);
-    if (existing?.insight) {
-      setSession(existing);
-      setInsight(existing.insight);
-      setUserKnows(existing.insight.userKnows || "");
-      setHelpful(existing.helpful);
-      setSaved(true);
-      setReady(true);
-      return;
-    }
 
     let pending: Pending | null = null;
     try {
@@ -54,33 +46,51 @@ function InsightInner() {
     }
 
     if (pending && pending.sessionId === id && pending.insight) {
-      const s: Session = {
+      const insightData: Insight = {
+        matter: pending.insight.matter,
+        care: pending.insight.care,
+        see: pending.insight.see,
+      };
+      const already = getSession(pending.sessionId);
+      const s = upsertSessionPartial({
         id: pending.sessionId,
-        date: formatDate(Date.now()),
         concern: pending.concern,
         messages: pending.messages,
-        insight: {
-          matter: pending.insight.matter,
-          care: pending.insight.care,
-          see: pending.insight.see,
-        },
-        createdAt: Date.now(),
-      };
+        insight: insightData,
+        accepted: already?.accepted === true ? true : false,
+      });
       setSession(s);
-      setInsight(s.insight!);
+      setInsight(insightData);
+      setUserKnows(s.insight?.userKnows || already?.insight?.userKnows || "");
+      setHelpful(s.helpful);
+      setSaved(s.accepted === true);
+      setReady(true);
+      return;
+    }
+
+    if (existing?.insight) {
+      setSession(existing);
+      setInsight(existing.insight);
+      setUserKnows(existing.insight.userKnows || "");
+      setHelpful(existing.helpful);
+      // Legacy (no accepted field): sessions were only written on 收下
+      const isAccepted =
+        existing.accepted === true || existing.accepted === undefined;
+      setSaved(isAccepted);
+      if (existing.accepted === undefined) {
+        saveSession({ ...existing, accepted: true });
+      }
       setReady(true);
       return;
     }
 
     if (existing) {
       setSession(existing);
-      setInsight(
-        existing.insight || {
-          matter: existing.concern,
-          care: "",
-          see: "",
-        }
-      );
+      setInsight({
+        matter: existing.concern,
+        care: "",
+        see: "",
+      });
       setReady(true);
       return;
     }
@@ -97,11 +107,16 @@ function InsightInner() {
         userKnows: userKnows.trim() || undefined,
       },
       helpful,
+      accepted: true,
       date: session.date || formatDate(Date.now()),
       createdAt: session.createdAt || Date.now(),
     };
     saveSession(next);
-    sessionStorage.removeItem("wenji_pending_insight");
+    try {
+      sessionStorage.removeItem("wenji_pending_insight");
+    } catch {
+      /* ignore */
+    }
     setSaved(true);
     setSession(next);
   }

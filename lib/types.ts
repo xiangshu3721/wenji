@@ -23,6 +23,8 @@ export interface Session {
   messages: Message[];
   insight?: Insight;
   helpful?: boolean;
+  /** true after user taps 收下这次自见 */
+  accepted?: boolean;
   createdAt: number;
 }
 

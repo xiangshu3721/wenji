@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getSessions, formatDate } from "@/lib/storage";
+import { useRouter } from "next/navigation";
+import { getSessions, formatDate, setDraft } from "@/lib/storage";
 import type { Session } from "@/lib/types";
 
 export default function HistoryPage() {
+  const router = useRouter();
   const [sessions, setSessions] = useState<Session[]>([]);
   const [ready, setReady] = useState(false);
 
@@ -15,6 +17,23 @@ export default function HistoryPage() {
     setSessions(list);
     setReady(true);
   }, []);
+
+  function openSession(s: Session) {
+    if (s.insight) {
+      router.push(`/insight?id=${encodeURIComponent(s.id)}`);
+      return;
+    }
+    // In-progress: restore draft and continue chat
+    setDraft({
+      sessionId: s.id,
+      concern: s.concern,
+      messages: s.messages,
+    });
+    if (typeof window !== "undefined") {
+      sessionStorage.setItem("wenji_concern", s.concern);
+    }
+    router.push("/ask");
+  }
 
   return (
     <main className="page">
@@ -51,19 +70,30 @@ export default function HistoryPage() {
       ) : (
         <div>
           {sessions.map((s) => (
-            <a
+            <button
               key={s.id}
+              type="button"
               className="history-item"
-              href={`/insight?id=${encodeURIComponent(s.id)}`}
+              onClick={() => openSession(s)}
+              style={{
+                display: "block",
+                width: "100%",
+                textAlign: "left",
+                background: "none",
+                border: "none",
+                cursor: "pointer",
+                font: "inherit",
+                color: "inherit",
+              }}
             >
               <div className="history-date">
                 {s.date || formatDate(s.createdAt)}
-                {s.insight ? " · 自见" : ""}
+                {s.insight ? " · 已自见" : " · 进行中"}
               </div>
               <div className="history-concern">
                 {s.insight?.matter || s.concern}
               </div>
-            </a>
+            </button>
           ))}
         </div>
       )}

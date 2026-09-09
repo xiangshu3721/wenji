@@ -8,6 +8,7 @@ import {
   setDraft,
   createId,
   incrementTodayCount,
+  upsertSessionPartial,
 } from "@/lib/storage";
 import type { Message } from "@/lib/types";
 
@@ -21,6 +22,19 @@ export default function AskPage() {
   const [ready, setReady] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const messagesRef = useRef<Message[]>([]);
+  const sessionIdRef = useRef("");
+  const concernRef = useRef("");
+
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
+  useEffect(() => {
+    sessionIdRef.current = sessionId;
+  }, [sessionId]);
+  useEffect(() => {
+    concernRef.current = concern;
+  }, [concern]);
 
   useEffect(() => {
     const draft = getDraft();
@@ -28,10 +42,14 @@ export default function AskPage() {
       setSessionId(draft.sessionId);
       setConcern(draft.concern);
       setMessages(draft.messages as Message[]);
+      upsertSessionPartial({
+        id: draft.sessionId,
+        concern: draft.concern,
+        messages: draft.messages as Message[],
+      });
       setReady(true);
       return;
     }
-    // 从首页 query / sessionStorage 兜底
     const q =
       typeof window !== "undefined"
         ? sessionStorage.getItem("wenji_concern") || ""
@@ -54,6 +72,11 @@ export default function AskPage() {
         setConcern(q);
         setMessages(data.messages);
         setDraft({ sessionId: id, concern: q, messages: data.messages });
+        upsertSessionPartial({
+          id,
+          concern: q,
+          messages: data.messages,
+        });
         setReady(true);
       } catch {
         router.replace("/");
@@ -65,13 +88,27 @@ export default function AskPage() {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, loading]);
 
+  function persistPartial(id: string, c: string, msgs: Message[]) {
+    setDraft({ sessionId: id, concern: c, messages: msgs });
+    upsertSessionPartial({ id, concern: c, messages: msgs });
+  }
+
+  function goHome() {
+    const id = sessionIdRef.current;
+    const c = concernRef.current;
+    const msgs = messagesRef.current;
+    if (id && msgs.length > 0) {
+      persistPartial(id, c, msgs);
+    }
+    router.push("/");
+  }
+
   async function send() {
     const text = answer.trim();
     if (!text || loading) return;
     setAnswer("");
     setLoading(true);
 
-    // 乐观展示用户回答
     const optimistic: Message[] = [
       ...messages,
       { role: "user", content: text },
@@ -102,13 +139,20 @@ export default function AskPage() {
         ];
 
       setMessages(nextMessages);
-      setDraft({
-        sessionId,
-        concern,
-        messages: nextMessages,
-      });
+      persistPartial(sessionId, concern, nextMessages);
 
       if (data.action === "finish" && data.insight) {
+        upsertSessionPartial({
+          id: sessionId,
+          concern,
+          messages: nextMessages,
+          insight: {
+            matter: data.insight.matter,
+            care: data.insight.care,
+            see: data.insight.see,
+          },
+          accepted: false,
+        });
         incrementTodayCount();
         if (typeof window !== "undefined") {
           sessionStorage.setItem(
@@ -159,9 +203,22 @@ export default function AskPage() {
   return (
     <main className="page" style={{ paddingTop: 12, paddingBottom: 12 }}>
       <div className="topbar">
-        <a className="quiet-link" href="/" style={{ borderBottom: "none" }}>
+        <button
+          type="button"
+          className="quiet-link"
+          onClick={goHome}
+          style={{
+            borderBottom: "none",
+            background: "none",
+            border: "none",
+            cursor: "pointer",
+            padding: 0,
+            font: "inherit",
+            color: "inherit",
+          }}
+        >
           ←
-        </a>
+        </button>
         <span className="topbar-title">正在问己</span>
         <span style={{ width: 24 }} />
       </div>
