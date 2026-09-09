@@ -349,23 +349,32 @@ button:disabled {
 
 /* 主动结束 */
 .finish-btn {
-  display: block;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   width: 100%;
-  margin: 4px 0 2px;
-  padding: 10px 8px;
-  border: none;
-  background: transparent;
-  color: var(--ink-muted);
-  font-size: 13px;
-  letter-spacing: 0.02em;
+  margin: 8px 0 10px;
+  padding: 14px 18px;
+  border-radius: 999px;
+  border: 1.5px solid var(--ink);
+  background: var(--white);
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
   text-align: center;
-  text-decoration: underline;
-  text-underline-offset: 4px;
-  text-decoration-color: var(--line);
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.04);
+  transition: background 0.15s ease, opacity 0.15s ease;
 }
 
 .finish-btn:active:not(:disabled) {
-  opacity: 0.7;
+  background: var(--bg-soft);
+  opacity: 0.92;
+}
+
+.finish-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 /* 原始对话回看 */
