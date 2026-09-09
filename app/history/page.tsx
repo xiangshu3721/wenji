@@ -22,7 +22,7 @@ export default function HistoryPage() {
         <a className="quiet-link" href="/" style={{ borderBottom: "none" }}>
           ←
         </a>
-        <span className="topbar-title">我的问己</span>
+        <span className="topbar-title">我的问题</span>
         <span style={{ width: 24 }} />
       </div>
 
@@ -30,12 +30,13 @@ export default function HistoryPage() {
         style={{
           fontSize: 26,
           fontWeight: 500,
-          letterSpacing: "0.2em",
-          textIndent: "0.2em",
+          letterSpacing: "0.08em",
+          textIndent: 0,
+          textAlign: "left",
           margin: "8px 0 24px",
         }}
       >
-        我的问己
+        我的问题
       </h1>
 
       {!ready ? (

@@ -225,7 +225,7 @@ function InsightInner() {
               style={{ width: "100%" }}
               onClick={() => router.push("/history")}
             >
-              我的问己
+              我的问题
             </button>
           </div>
         )}

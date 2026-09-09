@@ -121,7 +121,7 @@ export default function HomePage() {
       >
         <span className="muted">今日已问 {todayCount} 次</span>
         <a className="quiet-link" href="/history">
-          我的问己
+          我的问题
         </a>
       </footer>
     </main>
