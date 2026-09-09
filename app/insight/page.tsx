@@ -27,6 +27,7 @@ function InsightInner() {
   const [userKnows, setUserKnows] = useState("");
   const [helpful, setHelpful] = useState<boolean | undefined>(undefined);
   const [saved, setSaved] = useState(false);
+  const [showTranscript, setShowTranscript] = useState(false);
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
@@ -169,6 +170,45 @@ function InsightInner() {
         <div className="insight-label">我选择</div>
         <div className="insight-body">{insight.see}</div>
       </div>
+
+      {session?.messages && session.messages.length > 0 ? (
+        <div className="transcript-section">
+          {!showTranscript ? (
+            <button
+              type="button"
+              className="transcript-toggle"
+              onClick={() => setShowTranscript(true)}
+            >
+              查看原始对话
+            </button>
+          ) : (
+            <>
+              <div className="transcript-header">
+                <span className="transcript-title">原始对话</span>
+                <button
+                  type="button"
+                  className="transcript-toggle"
+                  onClick={() => setShowTranscript(false)}
+                >
+                  收起
+                </button>
+              </div>
+              <div className="transcript-chat">
+                {session.messages
+                  .filter((m) => m.role === "user" || m.role === "assistant")
+                  .map((m, i) => (
+                    <div
+                      key={`${i}-${m.role}`}
+                      className={`bubble ${m.role === "assistant" ? "ai" : "user"}`}
+                    >
+                      {m.content}
+                    </div>
+                  ))}
+              </div>
+            </>
+          )}
+        </div>
+      ) : null}
 
       <label
         className="muted"

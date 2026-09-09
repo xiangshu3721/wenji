@@ -64,7 +64,12 @@ export interface ReplyRequest {
   answer: string;
 }
 
-export type AskRequest = StartRequest | ReplyRequest;
+export interface FinishRequest {
+  mode: "finish";
+  messages: Message[];
+}
+
+export type AskRequest = StartRequest | ReplyRequest | FinishRequest;
 
 export interface StartResponse {
   sessionId?: string;

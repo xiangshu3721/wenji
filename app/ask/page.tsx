@@ -19,6 +19,7 @@ export default function AskPage() {
   const [concern, setConcern] = useState("");
   const [answer, setAnswer] = useState("");
   const [loading, setLoading] = useState(false);
+  const [finishing, setFinishing] = useState(false);
   const [ready, setReady] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -142,31 +143,7 @@ export default function AskPage() {
       persistPartial(sessionId, concern, nextMessages);
 
       if (data.action === "finish" && data.insight) {
-        upsertSessionPartial({
-          id: sessionId,
-          concern,
-          messages: nextMessages,
-          insight: {
-            matter: data.insight.matter,
-            care: data.insight.care,
-            see: data.insight.see,
-          },
-          accepted: false,
-        });
-        incrementTodayCount();
-        if (typeof window !== "undefined") {
-          sessionStorage.setItem(
-            "wenji_pending_insight",
-            JSON.stringify({
-              sessionId,
-              concern,
-              messages: nextMessages,
-              insight: data.insight,
-            })
-          );
-        }
-        clearDraft();
-        router.push(`/insight?id=${encodeURIComponent(sessionId)}`);
+        applyFinishFlow(nextMessages, data.insight);
         return;
       }
     } catch {
@@ -175,6 +152,78 @@ export default function AskPage() {
     } finally {
       setLoading(false);
       inputRef.current?.focus();
+    }
+  }
+
+
+  function applyFinishFlow(
+    nextMessages: Message[],
+    insight: { matter: string; care: string; see: string }
+  ) {
+    upsertSessionPartial({
+      id: sessionId,
+      concern,
+      messages: nextMessages,
+      insight: {
+        matter: insight.matter,
+        care: insight.care,
+        see: insight.see,
+      },
+      accepted: false,
+    });
+    incrementTodayCount();
+    if (typeof window !== "undefined") {
+      sessionStorage.setItem(
+        "wenji_pending_insight",
+        JSON.stringify({
+          sessionId,
+          concern,
+          messages: nextMessages,
+          insight,
+        })
+      );
+    }
+    clearDraft();
+    router.push(`/insight?id=${encodeURIComponent(sessionId)}`);
+  }
+
+  async function finishEarly() {
+    if (loading || finishing || messages.length < 2) return;
+    setFinishing(true);
+    setLoading(true);
+    try {
+      const res = await fetch("/api/ask", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          mode: "finish",
+          messages,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "结束失败");
+      if (!data.insight) throw new Error("未生成自见");
+
+      let nextMessages: Message[] = data.messages || messages;
+      const stopLine = "先停在这里。";
+      const last = nextMessages[nextMessages.length - 1];
+      if (
+        !(
+          last?.role === "assistant" &&
+          last.content.trim() === stopLine
+        )
+      ) {
+        nextMessages = [
+          ...nextMessages,
+          { role: "assistant", content: stopLine },
+        ];
+      }
+
+      setMessages(nextMessages);
+      applyFinishFlow(nextMessages, data.insight);
+    } catch {
+      setFinishing(false);
+      setLoading(false);
     }
   }
 
@@ -236,15 +285,30 @@ export default function AskPage() {
           ))}
         {loading ? (
           <div className="bubble ai">
-            <div className="typing">
-              <span />
-              <span />
-              <span />
-            </div>
+            {finishing ? (
+              <span className="muted">正在整理自见…</span>
+            ) : (
+              <div className="typing">
+                <span />
+                <span />
+                <span />
+              </div>
+            )}
           </div>
         ) : null}
         <div ref={bottomRef} />
       </div>
+
+      {messages.length >= 2 && !loading ? (
+        <button
+          type="button"
+          className="finish-btn"
+          onClick={finishEarly}
+          disabled={loading || finishing}
+        >
+          谢谢，我已经找到答案了
+        </button>
+      ) : null}
 
       <div className="composer">
         <textarea
@@ -255,14 +319,14 @@ export default function AskPage() {
           value={answer}
           onChange={(e) => setAnswer(e.target.value)}
           onKeyDown={onKeyDown}
-          disabled={loading}
+          disabled={loading || finishing}
           maxLength={800}
         />
         <button
           className="send-btn"
           type="button"
           onClick={send}
-          disabled={loading || !answer.trim()}
+          disabled={loading || finishing || !answer.trim()}
         >
           发送
         </button>

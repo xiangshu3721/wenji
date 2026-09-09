@@ -75,6 +75,10 @@ JSON 键名仍为 matter / care / see。
 - mode=hold：短允许/空间文字；question 可省略或用轻柔邀请。
 - finish：不要催促；系统会用「先停在这里。」作为助手收束语。
 
+■ finish 模式（用户主动结束 / 已找到答案）返回：
+{"action":"finish","insight":{"matter":"我看见…","care":"我明白…","see":"我选择…"}}
+规则：用户已表示找到答案或请求停止；只输出 finish JSON；insight 用用户口吻、扎根对话；不要再提问。
+
 只输出 JSON。`;
 
 function getGateway(): {
@@ -392,6 +396,73 @@ async function llmReply(
   return mockReply(messages, answer);
 }
 
+
+const STOP_LINE = "先停在这里。";
+
+function withStopLine(messages: Message[]): Message[] {
+  const last = messages[messages.length - 1];
+  if (last?.role === "assistant" && last.content.trim() === STOP_LINE) {
+    return messages;
+  }
+  return [...messages, { role: "assistant", content: STOP_LINE }];
+}
+
+function mockFinish(messages: Message[]): ReplyResponse {
+  const firstUser = messages.find((m) => m.role === "user")?.content || "";
+  const userMsgs = messages.filter((m) => m.role === "user");
+  const lastUser = userMsgs[userMsgs.length - 1]?.content || firstUser;
+  const insight = {
+    matter: `我看见：${clip(firstUser, 40)}`,
+    care: `我明白：${clip(lastUser, 40) || "对自己诚实的那一刻"}`,
+    see: "我选择：先停在看见里，让下一步自然浮现。",
+  };
+  return {
+    action: "finish",
+    insight,
+    depth: "S9",
+    messages: withStopLine(messages),
+  };
+}
+
+async function llmFinish(messages: Message[]): Promise<ReplyResponse> {
+  const raw = await callLLM([
+    { role: "system", content: SYSTEM_PROMPT },
+    {
+      role: "user",
+      content: JSON.stringify({
+        mode: "finish",
+        messages,
+        instruction:
+          '用户已找到答案或请求停止。只输出 finish JSON：{"action":"finish","insight":{"matter":"我看见…","care":"我明白…","see":"我选择…"}}。insight 须扎根对话、用用户口吻；不要提问、不要继续探索。',
+      }),
+    },
+  ]);
+
+  const parsed = extractJson(raw) as {
+    action?: string;
+    insight?: { matter?: string; care?: string; see?: string };
+    depth?: DepthState;
+  } | null;
+
+  if (parsed?.insight) {
+    const insight = {
+      matter: parsed.insight.matter || "",
+      care: parsed.insight.care || "",
+      see: parsed.insight.see || "",
+    };
+    if (insight.matter || insight.care || insight.see) {
+      return {
+        action: "finish",
+        insight,
+        depth: parsed.depth || "S9",
+        messages: withStopLine(messages),
+      };
+    }
+  }
+
+  return mockFinish(messages);
+}
+
 export async function handleStart(concern: string): Promise<StartResponse> {
   const c = concern.trim();
   if (!c) throw new Error("concern_required");
@@ -421,6 +492,22 @@ export async function handleReply(
     return await llmReply(messages, a);
   } catch {
     return mockReply(messages, a);
+  }
+}
+
+
+export async function handleFinish(messages: Message[]): Promise<ReplyResponse> {
+  if (!Array.isArray(messages) || messages.length === 0) {
+    throw new Error("messages_required");
+  }
+
+  if (!getGateway()) {
+    return mockFinish(messages);
+  }
+  try {
+    return await llmFinish(messages);
+  } catch {
+    return mockFinish(messages);
   }
 }
 

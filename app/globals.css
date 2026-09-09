@@ -346,3 +346,70 @@ button:disabled {
   text-align: center;
   padding: 40px 20px;
 }
+
+/* 主动结束 */
+.finish-btn {
+  display: block;
+  width: 100%;
+  margin: 4px 0 2px;
+  padding: 10px 8px;
+  border: none;
+  background: transparent;
+  color: var(--ink-muted);
+  font-size: 13px;
+  letter-spacing: 0.02em;
+  text-align: center;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+  text-decoration-color: var(--line);
+}
+
+.finish-btn:active:not(:disabled) {
+  opacity: 0.7;
+}
+
+/* 原始对话回看 */
+.transcript-section {
+  margin: 8px 0 4px;
+}
+
+.transcript-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.transcript-title {
+  font-size: 13px;
+  letter-spacing: 0.12em;
+  color: var(--ink-soft);
+}
+
+.transcript-toggle {
+  color: var(--ink-muted);
+  font-size: 13px;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 2px;
+  background: none;
+  border-top: none;
+  border-left: none;
+  border-right: none;
+}
+
+.transcript-toggle:active {
+  opacity: 0.7;
+}
+
+.transcript-chat {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 8px 0 4px;
+}
+
+.transcript-chat .bubble {
+  font-size: 14px;
+  padding: 10px 12px;
+  max-width: 95%;
+}

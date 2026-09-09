@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { handleReply, handleStart, hasRealGateway } from "@/lib/ai";
+import { handleFinish, handleReply, handleStart, hasRealGateway } from "@/lib/ai";
 import type { Message } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -40,8 +40,20 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    if (mode === "finish") {
+      const messages = (body?.messages || []) as Message[];
+      if (!Array.isArray(messages) || messages.length === 0) {
+        return NextResponse.json({ error: "会话无效" }, { status: 400 });
+      }
+      const result = await handleFinish(messages);
+      return NextResponse.json({
+        ...result,
+        mock: !hasRealGateway(),
+      });
+    }
+
     return NextResponse.json(
-      { error: "mode 须为 start 或 reply" },
+      { error: "mode 须为 start、reply 或 finish" },
       { status: 400 }
     );
   } catch (e) {
