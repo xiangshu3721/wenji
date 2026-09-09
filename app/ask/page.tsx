@@ -306,6 +306,21 @@ export default function AskPage() {
           onClick={finishEarly}
           disabled={loading || finishing}
         >
+          <svg
+            className="finish-icon"
+            viewBox="0 0 16 16"
+            fill="none"
+            aria-hidden="true"
+          >
+            <circle cx="8" cy="8" r="6.25" stroke="currentColor" strokeWidth="1.25" />
+            <path
+              d="M5.2 8.1 7.1 10l3.7-4.2"
+              stroke="currentColor"
+              strokeWidth="1.35"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
           谢谢，我已经找到答案了
         </button>
       ) : null}
