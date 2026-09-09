@@ -53,7 +53,7 @@ export default function HomePage() {
     <main className="page" style={{ justifyContent: "space-between" }}>
       <header style={{ paddingTop: 48 }}>
         <h1 className="brand-title">问己</h1>
-        <p className="brand-sub">AI 深度自我探索</p>
+        <p className="brand-sub">镜像导师 · 空静爱</p>
       </header>
 
       <section style={{ marginTop: 56 }}>

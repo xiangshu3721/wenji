@@ -147,11 +147,11 @@ function InsightInner() {
       </p>
 
       <div className="insight-card">
-        <div className="insight-label">这件事</div>
+        <div className="insight-label">我看见</div>
         <div className="insight-body">{insight.matter}</div>
-        <div className="insight-label">我真正关心</div>
+        <div className="insight-label">我明白</div>
         <div className="insight-body">{insight.care}</div>
-        <div className="insight-label">我看见了</div>
+        <div className="insight-label">我选择</div>
         <div className="insight-body">{insight.see}</div>
       </div>
 
@@ -159,7 +159,7 @@ function InsightInner() {
         className="muted"
         style={{ display: "block", marginTop: 20, marginBottom: 8 }}
       >
-        此刻，我真正知道的是……
+        这一刻，如果让你自己给这次探索留一句话，会是什么？
       </label>
       <textarea
         className="field"
