@@ -141,11 +141,7 @@ export default function AskPage() {
 
       setMessages(nextMessages);
       persistPartial(sessionId, concern, nextMessages);
-
-      if (data.action === "finish" && data.insight) {
-        applyFinishFlow(nextMessages, data.insight);
-        return;
-      }
+      // 自见仅由用户点击「谢谢，我已经找到答案了」触发
     } catch {
       setMessages(messages);
       setAnswer(text);

@@ -43,15 +43,14 @@ const SYSTEM_PROMPT = `你是「问己」——一位空、静、爱的镜像导
 
 【深度状态 S0–S9 · 非线性】
 S0 着陆｜S1 事境｜S2 情绪体感｜S3 欲望｜S4 恐惧｜S5 信念叙事｜S6 身份自我｜S7 矛盾张力｜S8 看见瞬间｜S9 自见落定
-可跳跃、可回流；不必走完。到达「用户已看见自己」即停。
+可跳跃、可回流；不必走完。用户已看见自己时改为 hold 陪伴，由用户决定是否结束。
 
-【停止机制】出现下列信号 → action=finish：
-- 用户说出清晰的自我看见（「原来……」「其实我知道……」）
-- 用户明确不想再聊 / 需要停
-- 已在 S8–S9，继续问只会稀释
-- 内部闸门判定：此刻继续问是为了用户，还是为了维持对话？若是后者 → 停或 hold
+【结束权在用户】
+- reply 模式禁止输出 action=finish。自见只能由用户主动触发（界面「谢谢，我已经找到答案了」→ finish 模式）。
+- 若用户已流露「原来如此 / 我知道了」：用 mode=hold 温柔确认与留白，可轻声提醒「若你已经找到答案，也可以自己结束这次问己」——但仍继续陪伴，不强制收束。
+- 内部闸门：继续问是为用户还是为维持对话？若是后者 → hold，而非 finish。
 
-【自见三字段】finish 时 insight 用用户口吻短句（非 AI 建议）：
+【自见三字段】仅 finish 模式输出；insight 用用户口吻短句（非 AI 建议）：
 - matter →「我看见」：发生了什么
 - care →「我明白」：发现了什么
 - see →「我选择」：现在想怎么做
@@ -68,12 +67,11 @@ JSON 键名仍为 matter / care / see。
 {"firstQuestion":"...","mirror":"可选镜映短句","messages":[{"role":"user","content":"用户困惑"},{"role":"assistant","content":"展示用完整气泡"}]}
 规则：assistant.content = 若有 mirror 则为 mirror + "\\n\\n" + firstQuestion，否则仅为 firstQuestion。开场尽量给一句短镜映。
 
-■ reply 模式返回其一：
+■ reply 模式只返回 ask（禁止 finish）：
 {"action":"ask","mode":"explore|release|hold","mirror":"...","question":"...","depth":"S0-S9"}
-{"action":"finish","insight":{"matter":"我看见…","care":"我明白…","see":"我选择…"}}
-- ask：展示内容 = mirror 有则 mirror+"\\n\\n"+question，否则 question。
+- 展示内容 = mirror 有则 mirror+"\n\n"+question，否则 question。
 - mode=hold：短允许/空间文字；question 可省略或用轻柔邀请。
-- finish：不要催促；系统会用「先停在这里。」作为助手收束语。
+- 即使用户像已经想通，也只 hold/轻问，绝不自行结束。
 
 ■ finish 模式（用户主动结束 / 已找到答案）返回：
 {"action":"finish","insight":{"matter":"我看见…","care":"我明白…","see":"我选择…"}}
@@ -216,30 +214,23 @@ function mockReply(messages: Message[], answer: string): ReplyResponse {
   const asked = messages.filter((m) => m.role === "assistant").length;
   const userReplies = countUserTurns(next) - 1;
   const emotion = EMOTION_RE.test(answer);
-  const clear = STOP_RE.test(answer) && userReplies >= 2;
-  const shouldFinish =
-    userReplies >= 5 || (userReplies >= 4 && answer.length > 40) || clear;
-
-  if (shouldFinish) {
-    const concern = messages.find((m) => m.role === "user")?.content || answer;
-    const insight = {
-      matter: `我看见：${clip(concern, 40)}`,
-      care: `我明白：${clip(answer, 40) || "对自己诚实的那一刻"}`,
-      see: "我选择：先停在看见里，让下一步自然浮现。",
-    };
-    next.push({ role: "assistant", content: "先停在这里。" });
-    return {
-      action: "finish",
-      insight,
-      depth: "S9",
-      messages: next,
-    };
-  }
+  const clear = STOP_RE.test(answer);
 
   const mirror = `你说「${clip(answer, 32)}」。`;
   let mode: ReplyMode = "explore";
   let question: string;
   let depth = pickDepth(asked, emotion);
+
+  // 用户流露「想通了」→ hold，不自动 finish（结束权在用户）
+  if (clear) {
+    mode = "hold";
+    depth = "S8";
+    question =
+      "听起来有些东西已经自己落下来了。若愿意，也可以停在这里；还是还有一点想再说？";
+    const content = buildAssistantContent(mirror, question);
+    next.push({ role: "assistant", content });
+    return { action: "ask", mode, mirror, question, depth, messages: next };
+  }
 
   if (emotion && userReplies <= 3) {
     mode = "release";
@@ -341,7 +332,7 @@ async function llmReply(
         messages,
         answer,
         instruction:
-          '继续：{"action":"ask","mode":"explore|release|hold","mirror":"...","question":"...","depth":"S0-S9"}\n结束：{"action":"finish","insight":{"matter":"我看见…","care":"我明白…","see":"我选择…"}}',
+          '只允许继续：{"action":"ask","mode":"explore|release|hold","mirror":"...","question":"...","depth":"S0-S9"}。禁止 action=finish；结束由用户在界面主动触发。',
       }),
     },
   ]);
@@ -357,17 +348,19 @@ async function llmReply(
 
   const next: Message[] = [...messages, { role: "user", content: answer }];
 
-  if (parsed?.action === "finish" && parsed.insight) {
-    const insight = {
-      matter: parsed.insight.matter || "",
-      care: parsed.insight.care || "",
-      see: parsed.insight.see || "",
-    };
-    next.push({ role: "assistant", content: "先停在这里。" });
+  // reply 模式忽略模型误返回的 finish，改成 hold 陪伴
+  if (parsed?.action === "finish") {
+    const holdMirror = "听起来，有些看见已经在你心里了。";
+    const holdQ =
+      "若你已经找到答案，可以自己结束这次问己；若还有一点未说尽，我在这儿。";
+    const content = buildAssistantContent(holdMirror, holdQ);
+    next.push({ role: "assistant", content });
     return {
-      action: "finish",
-      insight,
-      depth: parsed.depth || "S9",
+      action: "ask",
+      mode: "hold",
+      mirror: holdMirror,
+      question: holdQ,
+      depth: parsed.depth || "S8",
       messages: next,
     };
   }
