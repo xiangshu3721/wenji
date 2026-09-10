@@ -4,7 +4,7 @@
 > **问至无问，答案自明**  
 > 相比答案，好的问题更重要
 
-AI 不急着给答案：听 → 镜映 → 一问，帮用户看见自己的答案。
+AI 像真心在听的人：自然节奏、可多短气泡、可不提问；最高能力是让用户愿意继续说。结束权在用户。
 
 移动端 Web MVP · 无需登录 · 数据仅存 LocalStorage。
 
@@ -31,22 +31,19 @@ npm start                    # 端口 3020
 | 路径 | 说明 |
 |------|------|
 | `/` | 首页：写下困惑，开始问己 |
-| `/ask` | 对话（镜映 + 每次至多一问） |
+| `/ask` | 对话（多气泡 · 可只回应不问） |
 | `/insight?id=` | 自见页：我看见 / 我明白 / 我选择 |
 | `/history` | 我的问题历史 |
 
-## AI 规则 2.0（摘要）
+## AI 规则 4.0（摘要）
 
-完整文档：[`docs/ai-rules-2.0.md`](docs/ai-rules-2.0.md)
+完整文档：[`docs/ai-rules-4.0.md`](docs/ai-rules-4.0.md)（2.0 见 [`docs/ai-rules-2.0.md`](docs/ai-rules-2.0.md)）
 
-- **身份**：镜像导师，非答案机；气质 **空 · 静 · 爱**
-- **循环**：听 → 镜映 → 一问；好问题五准则：根×指向×空间×可答×增量
-- **情绪优先**：情绪明显时先释放/抱持（描述/身体/意象/自由表达/允许），再探索；不作医疗承诺
-- **深度状态**：非线性 **S0–S9**，可跳跃回流；用户已自见即停
-- **自见三字段**（JSON keys 兼容）：
-  - `matter` → **我看见**（发生了什么）
-  - `care` → **我明白**（发现了什么）
-  - `see` → **我选择**（现在想怎么做）
+- **身份**：真心在听的镜子，非提问机器人；气质 **空 · 静 · 爱**
+- **节奏**：内容决定 1–5 短气泡；可不提问；反机械（连续两轮问答后优先只回应）
+- **探索**：一次一个任务；决策对称；情绪优先抱持；允许沉默与 celebrate
+- **结束**：仅用户点击「谢谢，我已经找到答案了」→ finish；reply 永不 auto-finish
+- **自见三字段**：`matter` 我看见 · `care` 我明白 · `see` 我选择
 
 ## AI 接口 `/api/ask`
 
@@ -58,8 +55,8 @@ npm start                    # 端口 3020
 { "mode": "start", "concern": "我最近总是犹豫不决" }
 ```
 
-→ `{ firstQuestion, mirror?, messages, mock? }`  
-助手气泡：有镜映则为 `mirror + "\n\n" + firstQuestion`。
+→ `{ bubbles?, firstQuestion?, messages, mock? }`  
+多条 `assistant` = 多气泡；`firstQuestion` 兼容。
 
 ### `reply`
 
@@ -67,17 +64,17 @@ npm start                    # 端口 3020
 { "mode": "reply", "messages": [...], "answer": "其实我怕选错" }
 ```
 
-→ ask：`{ action:"ask", mode?, mirror?, question?, depth?, messages?, mock? }`  
-→ finish：`{ action:"finish", insight:{matter,care,see}, messages?, mock? }`（收束语「先停在这里。」）
+→ ask：`{ action:"ask", mode?, bubbles?, hasQuestion?, depth?, messages?, mock? }`（禁止 finish）  
+→ finish（仅 mode=finish）：`{ action:"finish", insight:{matter,care,see}, messages?, mock? }`
 
 ### Mock 行为
 
 未配置任何 API Key 时自动启用：
 
-1. 开场短镜映 + 第一问（情绪词 → 释放式问题）
-2. 镜映优先；情绪关键词走 release；矛盾/欲望等走 explore；短答可 hold
-3. 约 **4–6 轮**后，或话里出现「原来如此 / 我不想聊了 / 其实我知道」等 → finish
-4. 自见模板对齐「我看见 / 我明白 / 我选择」
+1. 开场 2–3 气泡（情绪 → 多承接；决策 → 对称提示）
+2. 有时 hold/不问；有时 celebrate；情绪走 release；**永不 auto-finish**
+3. 「原来如此」等 → hold 留白，等用户主动结束
+4. finish 仅用户触发；自见模板「我看见 / 我明白 / 我选择」
 
 ## 本地存储
 

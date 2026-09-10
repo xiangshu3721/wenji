@@ -30,8 +30,8 @@ export interface Session {
 
 export type AskAction = "ask" | "finish";
 
-/** 对话模式：探索 / 情绪释放 / 抱持留白 */
-export type ReplyMode = "explore" | "release" | "hold";
+/** 对话模式：探索 / 情绪释放 / 抱持留白 / 轻庆祝 */
+export type ReplyMode = "explore" | "release" | "hold" | "celebrate";
 
 /**
  * 深度状态机 S0–S9（非线性，可跳跃/回流，不必顺序走完）
@@ -73,19 +73,26 @@ export type AskRequest = StartRequest | ReplyRequest | FinishRequest;
 
 export interface StartResponse {
   sessionId?: string;
-  firstQuestion: string;
-  /** 可选镜映短句（展示时并入 assistant content） */
+  /** 兼容：最后一个问句气泡，或最后一个气泡 */
+  firstQuestion?: string;
+  /** @deprecated 兼容旧字段；优先用 bubbles */
   mirror?: string;
+  /** 1–5 短句气泡；每条对应一条 assistant message */
+  bubbles?: string[];
   messages: Message[];
 }
 
 export interface ReplyResponse {
   action: AskAction;
   question?: string;
-  /** explore | release | hold */
+  /** explore | release | hold | celebrate */
   mode?: ReplyMode;
-  /** 镜映短句 */
+  /** @deprecated 兼容旧字段；优先用 bubbles */
   mirror?: string;
+  /** 1–5 短句气泡 */
+  bubbles?: string[];
+  /** 本轮是否含问句；允许 false（只回应/留白） */
+  hasQuestion?: boolean;
   /** 当前深度状态 S0–S9 */
   depth?: DepthState;
   insight?: {

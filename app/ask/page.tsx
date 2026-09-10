@@ -129,15 +129,29 @@ export default function AskPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "回复失败");
 
-      const nextMessages: Message[] =
-        data.messages ||
-        [
+      let nextMessages: Message[];
+      if (Array.isArray(data.messages) && data.messages.length) {
+        nextMessages = data.messages;
+      } else if (Array.isArray(data.bubbles) && data.bubbles.length) {
+        nextMessages = [
+          ...optimistic,
+          ...data.bubbles
+            .map((b: string) => String(b || "").trim())
+            .filter(Boolean)
+            .map((content: string) => ({
+              role: "assistant" as const,
+              content,
+            })),
+        ];
+      } else {
+        nextMessages = [
           ...optimistic,
           {
             role: "assistant",
             content: data.question || "……",
           },
         ];
+      }
 
       setMessages(nextMessages);
       persistPartial(sessionId, concern, nextMessages);

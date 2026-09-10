@@ -199,6 +199,11 @@ button:disabled {
   border-top-left-radius: 4px;
 }
 
+/* 连续 AI 短气泡更贴近，像自然连发 */
+.chat-area .bubble.ai + .bubble.ai {
+  margin-top: -6px;
+}
+
 .bubble.user {
   align-self: flex-end;
   background: var(--white);
