@@ -136,9 +136,11 @@ export default function AskPage() {
   }, [router]);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({
-      behavior: prefersReducedMotion() ? "auto" : "smooth",
-      block: "end",
+    // 页面是整页滚动，滚到文档最底，让最新气泡和输入框都在视野里
+    const behavior = prefersReducedMotion() ? "auto" : "smooth";
+    window.scrollTo({
+      top: document.documentElement.scrollHeight,
+      behavior,
     });
   }, [messages, loading, phase, errorMsg]);
 
