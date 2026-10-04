@@ -66,6 +66,12 @@ const SYSTEM_PROMPT = `你是「问己」。
 - 禁止固定结构：不要总是「镜映 + 缓冲 + 问题」三件套；也不要连续几轮条数相同。
 - 最后一条通常是一个问题，但不是必须；该只回应、留白时就只回应。
 - 每条是一个自然的短句或一小段话（不超过 60 字），不要把多句硬塞成一大段，也不要把一句话拆成几条。
+- 系统会在请求里给出 bubbleTarget（本轮建议条数，依据用户这句话的长短、情绪、是否提问算出）。请按 bubbleTarget 条来写；每一条承担不同作用，不重复、不垫话：
+  · 1 条：一句话——只接住，或只轻轻一问，二选一。
+  · 2 条：接住 + 一个小口子（问或留白）；或「看见一点」+ 一问。
+  · 3 条：接住最重的 → 点出你注意到的（具体到用户的字眼） → 轻轻一问或留白。
+  · 4 条：接住 → 回应用户说的细节 → 点出其中的拉扯或代价 → 一问，或干脆不问、只陪着。
+  不要把「先复述用户的话，再追问」当固定模板；复述最多用半句，其余要有新内容。
 
 【条数示意 · 只示意条数与节奏，禁止照抄句子】
 用户：「睡不好」 → bubbles 1 条：["睡不好，是躺下就睡不着，还是睡着了又总醒？"]
@@ -251,6 +257,80 @@ export function cleanBubbles(raw: string[]): string[] {
     return [...out.slice(0, MAX_BUBBLES - 1), out[out.length - 1]];
   }
   return out;
+}
+
+/** 依据用户这句话的长短 / 情绪 / 是否提问 / 上一轮条数，给出本轮建议条数（1–4）。同一输入结果稳定。 */
+const BUBBLE_EMOTION_RE =
+  /累|哭|难过|崩溃|焦虑|害怕|恐惧|痛苦|绝望|委屈|愤怒|生气|吵架|失眠|孤独|压力|撑不住|不想活|讨厌|恨|烦|崩|伤心|难受|窒息|自责|愧疚|羞耻|无助|麻木|空虚|吵|架|失望|罪恶|不够好|没人|撑着|熬/;
+
+function hash01(s: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return ((h >>> 0) % 10000) / 10000;
+}
+
+function pickByWeights(h: number, weights: number[]): number {
+  // weights[i] 对应条数 i+1
+  let acc = 0;
+  for (let i = 0; i < weights.length; i++) {
+    acc += weights[i];
+    if (h < acc) return i + 1;
+  }
+  return weights.length;
+}
+
+export function suggestBubbleCount(text: string, prevCount = 0, salt = ""): number {
+  const t = (text || "").replace(/\s+/g, "");
+  const n = t.length;
+  const emotion = BUBBLE_EMOTION_RE.test(t);
+  const asks = /[？?]|为什么|怎么办|怎么|要不要|是不是|该不该|能不能|吗$/.test(t);
+  const hits = (t.match(new RegExp(BUBBLE_EMOTION_RE.source, "g")) || []).length;
+  const h = hash01(t + "|" + salt);
+  let target: number;
+  if (n <= 6) {
+    target = pickByWeights(h, emotion ? [0.55, 0.45] : [0.9, 0.1]);
+  } else if (n <= 16) {
+    target = emotion
+      ? pickByWeights(h, [0.2, 0.45, 0.35])
+      : asks
+        ? pickByWeights(h, [0.2, 0.55, 0.25])
+        : pickByWeights(h, [0.5, 0.4, 0.1]);
+  } else if (n <= 40) {
+    target = emotion
+      ? pickByWeights(h, [0, 0.15, 0.45, 0.4])
+      : pickByWeights(h, [0.3, 0.5, 0.15, 0.05]);
+  } else {
+    target = emotion
+      ? pickByWeights(h, [0, 0, 0.4, 0.6])
+      : pickByWeights(h, [0, 0.15, 0.5, 0.35]);
+  }
+  // 情绪信号多且有一定篇幅：至少 3 条（先接住、再点出）
+  if (hits >= 2 && n > 20) target = Math.max(target, 3);
+  // 避免连续两轮同样条数（极短输入除外）
+  if (n > 6 && prevCount > 0 && target === prevCount) {
+    target = target >= 4 ? 3 : target <= 1 ? 2 : h < 0.5 ? target + 1 : target - 1;
+  }
+  return Math.max(1, Math.min(MAX_BUBBLES, target));
+}
+
+const BUBBLE_SKELETON: Record<number, string> = {
+  1: '["一句话：只接住，或只轻轻一问"]',
+  2: '["接住一句","一问或留白的一句"]',
+  3: '["接住最重的","点出你注意到的（用到对方的字眼）","轻轻一问，或留白"]',
+  4: '["接住","回应对方说的细节","点出其中的拉扯或代价","一问，或只陪着不问"]',
+};
+
+function bubbleSpec(n: number): string {
+  return `bubbles 数组必须恰好 ${n} 个元素（本轮条数已按这句话的长短与情绪定好），各条作用依次为 ${BUBBLE_SKELETON[n] || BUBBLE_SKELETON[2]}；每条是你自己的话，不要照抄这些说明，不要重复前一条，不要把「复述+追问」当模板。`;
+}
+
+function trailingAssistantCount(messages: Message[]): number {
+  let c = 0;
+  for (let i = messages.length - 1; i >= 0 && messages[i].role === "assistant"; i--) c++;
+  return c;
 }
 
 /** 从 LLM 字段解析 bubbles；兼容 legacy mirror+question；不强行补齐或拆成固定条数 */
@@ -487,6 +567,7 @@ function mockReply(messages: Message[], answer: string): ReplyResponse {
 /* ---------- Real LLM ---------- */
 
 async function llmStart(concern: string): Promise<StartResponse> {
+  const bubbleTarget = suggestBubbleCount(concern, 0, "start");
   const raw = await callLLM([
     { role: "system", content: SYSTEM_PROMPT },
     {
@@ -494,8 +575,9 @@ async function llmStart(concern: string): Promise<StartResponse> {
       content: JSON.stringify({
         mode: "start",
         concern,
+        bubbleTarget,
         instruction:
-          '返回 JSON：{"bubbles":["…"],"firstQuestion":"可选"}（只需 bubbles，messages 由系统组装）。bubbles 1–4 条，条数按用户这句话的长短与情绪自然决定（短就 1 条，不要凑数，不要固定结构）；可含镜映与问句，也可开场只接住。',
+          `返回 JSON：{"bubbles":["…"],"firstQuestion":"可选"}（只需 bubbles，messages 由系统组装）。${bubbleSpec(bubbleTarget)}`,
       }),
     },
   ]);
@@ -554,6 +636,11 @@ async function llmReply(
   messages: Message[],
   answer: string
 ): Promise<ReplyResponse> {
+  const bubbleTarget = suggestBubbleCount(
+    answer,
+    trailingAssistantCount(messages),
+    String(messages.length)
+  );
   const raw = await callLLM([
     { role: "system", content: SYSTEM_PROMPT },
     {
@@ -562,8 +649,9 @@ async function llmReply(
         mode: "reply",
         messages,
         answer,
+        bubbleTarget,
         instruction:
-          '只允许继续：{"action":"ask","mode":"explore|release|hold|celebrate","bubbles":["短句…"],"depth":"S0-S9","hasQuestion":true|false}。禁止 action=finish；可不提问；bubbles 1–4 条，按这句话的长短与情绪决定条数，不凑数、不套模板。结束由用户在界面主动触发。',
+          `只允许继续：{"action":"ask","mode":"explore|release|hold|celebrate","bubbles":["短句…"],"depth":"S0-S9","hasQuestion":true|false}。禁止 action=finish；可不提问；${bubbleSpec(bubbleTarget)}结束由用户在界面主动触发。`,
       }),
     },
   ]);
