@@ -97,3 +97,15 @@ npm start                    # 端口 3020
 ## 环境变量
 
 见 `.env.example`。可选 `DEEPSEEK_MODEL`（默认 `deepseek-chat`）。
+
+## 线上版本
+
+| 部分 | 放哪 | 地址 |
+|---|---|---|
+| 页面（静态导出） | GitHub Pages（`gh-pages` 分支） | https://xiangshu3721.github.io/wenji/ |
+| 对话接口 `/api/ask` | 腾讯云 CloudBase 云托管，服务名 `wenji-api` | https://wenji-api-308371-7-1304965105.sh.run.tcloudbase.com/api/ask |
+
+- DeepSeek Key 只放在云托管服务的环境变量 `DEEPSEEK_API_KEY`，不进浏览器、不进仓库。没配 Key 时接口回退本地 mock。
+- 接口只允许 `https://xiangshu3721.github.io` 跨域调用（预检缓存 86400 秒），单 IP 每分钟 15 次 / 每小时 120 次，单次输入有长度上限。
+- 重新发布页面：`NEXT_PUBLIC_API_URL=<接口地址> npm run build:pages`，把 `out/` 内容推到 `gh-pages` 分支。
+- 重新发布接口：`tcb cloudrun deploy -s wenji-api --port 3000 --source .`（用根目录 `Dockerfile`）。
