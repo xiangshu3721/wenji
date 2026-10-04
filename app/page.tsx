@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -9,6 +10,7 @@ import {
   getDraft,
   upsertSessionPartial,
 } from "@/lib/storage";
+import { ASK_URL } from "@/lib/api";
 import type { Message } from "@/lib/types";
 
 export default function HomePage() {
@@ -34,7 +36,7 @@ export default function HomePage() {
     setError("");
     setLoading(true);
     try {
-      const res = await fetch("/api/ask", {
+      const res = await fetch(ASK_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ mode: "start", concern: text }),
@@ -126,9 +128,9 @@ export default function HomePage() {
         </div>
         {hasResume ? (
           <p style={{ marginTop: 16, textAlign: "center" }}>
-            <a className="quiet-link" href="/ask">
+            <Link className="quiet-link" href="/ask">
               继续上次问己
-            </a>
+            </Link>
           </p>
         ) : null}
       </section>
@@ -142,9 +144,9 @@ export default function HomePage() {
         }}
       >
         <span className="muted">今日已问 {todayCount} 次</span>
-        <a className="quiet-link" href="/history">
+        <Link className="quiet-link" href="/history">
           我的问题
-        </a>
+        </Link>
       </footer>
     </main>
   );

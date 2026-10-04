@@ -10,6 +10,7 @@ import {
   incrementTodayCount,
   upsertSessionPartial,
 } from "@/lib/storage";
+import { ASK_URL } from "@/lib/api";
 import type { Message } from "@/lib/types";
 
 export default function AskPage() {
@@ -61,7 +62,7 @@ export default function AskPage() {
     }
     (async () => {
       try {
-        const res = await fetch("/api/ask", {
+        const res = await fetch(ASK_URL, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ mode: "start", concern: q }),
@@ -117,7 +118,7 @@ export default function AskPage() {
     setMessages(optimistic);
 
     try {
-      const res = await fetch("/api/ask", {
+      const res = await fetch(ASK_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -202,7 +203,7 @@ export default function AskPage() {
     setFinishing(true);
     setLoading(true);
     try {
-      const res = await fetch("/api/ask", {
+      const res = await fetch(ASK_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
