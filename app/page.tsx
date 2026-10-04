@@ -58,6 +58,7 @@ export default function HomePage() {
       });
       if (typeof window !== "undefined") {
         sessionStorage.setItem("wenji_concern", text);
+        sessionStorage.setItem("wenji_reveal", "1");
       }
       router.push("/ask");
     } catch (e) {

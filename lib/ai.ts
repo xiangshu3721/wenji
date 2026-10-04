@@ -57,6 +57,23 @@ const SYSTEM_PROMPT = `你是「问己」。
 - 把手法写成医疗承诺；不作穴位等医学主张
 - reply 模式禁止 action=finish（结束权只在用户）
 
+【回复条数 · 由内容决定（1–4 条）】
+条数是结果，不是模板。先看用户这句话有多长、多重，再决定说几条：
+- 很短、很轻（如一句话、一个词、「睡不好」「不知道」）：只回 1 条，一句话就够，可以是问句，也可以只是接住。
+- 一般长度、一个清楚的点：1–2 条。
+- 较长、情绪较重、有几层意思：2–4 条，先接住，再看见，最后才轻轻一问；情绪很重时宁可多接住、少发问。
+- 禁止凑数：不要为了“看起来有温度”硬加「不急」「我在这儿」之类的垫句；每一条都要有新的内容。
+- 禁止固定结构：不要总是「镜映 + 缓冲 + 问题」三件套；也不要连续几轮条数相同。
+- 最后一条通常是一个问题，但不是必须；该只回应、留白时就只回应。
+- 每条是一个自然的短句或一小段话（不超过 60 字），不要把多句硬塞成一大段，也不要把一句话拆成几条。
+
+【条数示意 · 只示意条数与节奏，禁止照抄句子】
+用户：「睡不好」 → bubbles 1 条：["睡不好，是躺下就睡不着，还是睡着了又总醒？"]
+用户：「我不知道」 → bubbles 1 条（不提问）：["嗯，不知道也没关系，我陪你在这儿。"]
+用户：「想换个城市生活，但又舍不得现在的朋友」 → bubbles 2 条：["想走，又舍不得——两边都是真的。","如果只看舍不得的那一边，你最不想失去的是什么？"]
+用户：（一大段，讲了吵架、哭了一夜、觉得自己什么都做不好） → bubbles 3–4 条：先接住最重的那件事，再点出你注意到的，最后留一个轻轻的口子，或干脆不问。
+同一场对话里，条数应随用户每一句的长短与情绪起伏，不要每轮都一样。
+
 【一次一个探索任务】
 一次只推进一个核心探索方向（同一任务里可出现双向探索问句，如决策两边各看一眼）。
 不机械「每次必须一问」。
@@ -96,11 +113,11 @@ S0 着陆｜S1 事境｜S2 情绪体感｜S3 欲望｜S4 恐惧｜S5 信念叙�
 
 ■ start 模式返回：
 {"bubbles":["短句1","短句2"],"messages":[{"role":"user","content":"困惑原文"},{"role":"assistant","content":"短句1"},{"role":"assistant","content":"短句2"}],"firstQuestion":"可选·最后一个问句或最后一句"}
-规则：bubbles 1–5 条非空短句；messages 中每条 bubble 对应一条独立 assistant；firstQuestion 兼容字段=最后一个含问号的 bubble，否则最后一条。
+规则：bubbles 1–4 条非空短句，条数按【回复条数】由内容决定；messages 中每条 bubble 对应一条独立 assistant；firstQuestion 兼容字段=最后一个含问号的 bubble，否则最后一条。
 
 ■ reply 模式只返回 ask（禁止 finish）：
 {"action":"ask","mode":"explore|release|hold|celebrate","bubbles":["..."],"depth":"S0-S9","hasQuestion":true|false}
-- bubbles：1–5 短句；可不含问句（hasQuestion:false）。
+- bubbles：1–4 条，条数由用户这句话的长短与情绪决定；可不含问句（hasQuestion:false）。
 - 不要要求每次 mirror+question；不要把多句硬并成一大段。
 - mode=celebrate：轻庆祝/朋友式回应，仍可含或不含问句。
 - 即使用户像已经想通，也只 hold/轻问，绝不自行结束。
@@ -165,7 +182,7 @@ async function callLLM(messages: { role: string; content: string }[]): Promise<s
     body: JSON.stringify({
       model: gw.model,
       messages,
-      temperature: 0.7,
+      temperature: 0.85,
       max_tokens: 1500,
     }),
   });
@@ -214,7 +231,29 @@ function looksLikeQuestion(s: string): boolean {
   return /[？?]/.test(t) || /吗[。.!！]?$/.test(t) || /呢[。.!！]?$/.test(t);
 }
 
-/** 从 LLM 字段解析 bubbles；兼容 legacy mirror+question */
+const MAX_BUBBLES = 4;
+const MAX_BUBBLE_CHARS = 320;
+
+/** 清洗气泡：拆开误合并的段落、去空去重、限长，条数上限 4（超出时保留前几条 + 最后一条） */
+export function cleanBubbles(raw: string[]): string[] {
+  const out: string[] = [];
+  for (const item of raw) {
+    const parts = String(item ?? "")
+      .split(/\n{2,}/)
+      .map((x) => x.trim())
+      .filter(Boolean);
+    for (const part of parts) {
+      const t = part.length > MAX_BUBBLE_CHARS ? part.slice(0, MAX_BUBBLE_CHARS) + "…" : part;
+      if (out[out.length - 1] !== t) out.push(t);
+    }
+  }
+  if (out.length > MAX_BUBBLES) {
+    return [...out.slice(0, MAX_BUBBLES - 1), out[out.length - 1]];
+  }
+  return out;
+}
+
+/** 从 LLM 字段解析 bubbles；兼容 legacy mirror+question；不强行补齐或拆成固定条数 */
 export function normalizeBubbles(parsed: {
   bubbles?: unknown;
   mirror?: string;
@@ -222,16 +261,15 @@ export function normalizeBubbles(parsed: {
   firstQuestion?: string;
 }): string[] {
   if (Array.isArray(parsed.bubbles)) {
-    const list = parsed.bubbles
-      .map((b) => String(b ?? "").trim())
-      .filter(Boolean)
-      .slice(0, 5);
+    const list = cleanBubbles(parsed.bubbles.map((b) => String(b ?? "")));
+    if (list.length) return list;
+  } else if (typeof parsed.bubbles === "string" && parsed.bubbles.trim()) {
+    const list = cleanBubbles([parsed.bubbles]);
     if (list.length) return list;
   }
   const m = (parsed.mirror || "").trim();
   const q = (parsed.question || parsed.firstQuestion || "").trim();
-  const legacy = [m, q].filter(Boolean);
-  return legacy.slice(0, 5);
+  return cleanBubbles([m, q].filter(Boolean));
 }
 
 function pickFirstQuestion(bubbles: string[]): string {
@@ -316,7 +354,13 @@ function mockStart(concern: string): StartResponse {
   const decision = /还是|要不要|辞|留|选|犹豫|纠结/.test(concern);
   let bubbles: string[];
 
-  if (emotion) {
+  if (concern.trim().length <= 8 && !decision) {
+    bubbles = [
+      emotion
+        ? `${clip(concern, 8)}——我在听。是什么让你有这样的感觉？`
+        : `${clip(concern, 8)}。这件事，是怎么开始的？`,
+    ];
+  } else if (emotion) {
     bubbles = [
       `听起来，「${clip(concern, 22)}」这件事已经压在心里一阵了。`,
       "可以先不用急着想怎么办。",
@@ -451,7 +495,7 @@ async function llmStart(concern: string): Promise<StartResponse> {
         mode: "start",
         concern,
         instruction:
-          '返回 JSON：{"bubbles":["短句1","短句2"],"messages":[{"role":"user","content":"困惑原文"},{"role":"assistant","content":"短句1"},{"role":"assistant","content":"短句2"}],"firstQuestion":"可选"}。bubbles 1–5；每条 bubble 对应一条 assistant；可含镜映与问句，也可开场只接住。',
+          '返回 JSON：{"bubbles":["…"],"firstQuestion":"可选"}（只需 bubbles，messages 由系统组装）。bubbles 1–4 条，条数按用户这句话的长短与情绪自然决定（短就 1 条，不要凑数，不要固定结构）；可含镜映与问句，也可开场只接住。',
       }),
     },
   ]);
@@ -484,7 +528,7 @@ async function llmStart(concern: string): Promise<StartResponse> {
     const useBubbles =
       bubbles.length >= 2 || assistantFromParsed.length < 2
         ? bubbles
-        : assistantFromParsed.slice(0, 5);
+        : cleanBubbles(assistantFromParsed);
     messages = appendBubbles(
       [{ role: "user", content: userMsg.content || concern }],
       useBubbles.length ? useBubbles : bubbles
@@ -519,7 +563,7 @@ async function llmReply(
         messages,
         answer,
         instruction:
-          '只允许继续：{"action":"ask","mode":"explore|release|hold|celebrate","bubbles":["短句…"],"depth":"S0-S9","hasQuestion":true|false}。禁止 action=finish；可不提问；bubbles 1–5。结束由用户在界面主动触发。',
+          '只允许继续：{"action":"ask","mode":"explore|release|hold|celebrate","bubbles":["短句…"],"depth":"S0-S9","hasQuestion":true|false}。禁止 action=finish；可不提问；bubbles 1–4 条，按这句话的长短与情绪决定条数，不凑数、不套模板。结束由用户在界面主动触发。',
       }),
     },
   ]);
