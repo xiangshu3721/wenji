@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
@@ -140,9 +141,9 @@ function InsightInner() {
   return (
     <main className="page">
       <div className="topbar">
-        <a className="quiet-link" href="/" style={{ borderBottom: "none" }}>
+        <Link className="quiet-link" href="/" style={{ borderBottom: "none" }}>
           ←
-        </a>
+        </Link>
         <span className="topbar-title">自见</span>
         <span style={{ width: 24 }} />
       </div>

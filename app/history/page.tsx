@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getSessions, formatDate, setDraft } from "@/lib/storage";
@@ -38,9 +39,9 @@ export default function HistoryPage() {
   return (
     <main className="page">
       <div className="topbar">
-        <a className="quiet-link" href="/" style={{ borderBottom: "none" }}>
+        <Link className="quiet-link" href="/" style={{ borderBottom: "none" }}>
           ←
-        </a>
+        </Link>
         <span className="topbar-title">我的问题</span>
         <span style={{ width: 24 }} />
       </div>
@@ -63,9 +64,9 @@ export default function HistoryPage() {
       ) : sessions.length === 0 ? (
         <div className="empty-state">
           <p>还没有问己记录</p>
-          <a className="quiet-link" href="/">
+          <Link className="quiet-link" href="/">
             开始第一次
-          </a>
+          </Link>
         </div>
       ) : (
         <div>
