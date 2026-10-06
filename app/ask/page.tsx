@@ -10,7 +10,7 @@ import {
   incrementTodayCount,
   upsertSessionPartial,
 } from "@/lib/storage";
-import { ASK_URL } from "@/lib/api";
+import { postAsk, warmUp, AskError } from "@/lib/request";
 import type { Message } from "@/lib/types";
 
 type Phase = "idle" | "thinking" | "typing";
@@ -36,6 +36,7 @@ export default function AskPage() {
   const [finishing, setFinishing] = useState(false);
   const [ready, setReady] = useState(false);
   const [phase, setPhase] = useState<Phase>("idle");
+  const [slowHint, setSlowHint] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
   const busyRef = useRef(false);
   const runRef = useRef(0);
@@ -50,6 +51,7 @@ export default function AskPage() {
     messagesRef.current = messages;
   }, [messages]);
   useEffect(() => {
+    warmUp();
     // 离开页面时让进行中的“逐条出现”停下
     return () => {
       runRef.current += 1;
@@ -111,13 +113,8 @@ export default function AskPage() {
     }
     (async () => {
       try {
-        const res = await fetch(ASK_URL, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ mode: "start", concern: q }),
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || "失败");
+        const data = await postAsk<{ messages: Message[] }>({ mode: "start", concern: q });
+        if (!Array.isArray(data.messages) || data.messages.length < 2) throw new Error("empty");
         const id = createId();
         setSessionId(id);
         setConcern(q);
@@ -205,37 +202,24 @@ export default function AskPage() {
     setAnswer("");
     setPhase("thinking");
     const sentAt = Date.now();
+    // 等得久了（多半是云端冷启动），把“正在想”换成说人话的提示
+    const slowTimer = setTimeout(() => setSlowHint(true), 8000);
 
     const prev = messages;
     const optimistic: Message[] = [...prev, { role: "user", content: text }];
     setMessages(optimistic);
     fullRef.current = optimistic;
 
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 45000);
     try {
-      const res = await fetch(ASK_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          mode: "reply",
-          messages: prev,
-          answer: text,
-        }),
-        signal: ctrl.signal,
-      });
-      let data: {
+      const data = await postAsk<{
         error?: string;
         messages?: Message[];
         bubbles?: string[];
         question?: string;
-      } = {};
-      try {
-        data = await res.json();
-      } catch {
-        /* 非 JSON，按失败处理 */
-      }
-      if (!res.ok) throw new Error(data.error || "回复失败");
+      }>(
+        { mode: "reply", messages: prev, answer: text },
+        { onRetry: () => setSlowHint(true) }
+      );
 
       let incoming: Message[] = [];
       if (Array.isArray(data.messages) && data.messages.length > optimistic.length) {
@@ -266,16 +250,15 @@ export default function AskPage() {
       fullRef.current = prev;
       setAnswer(text);
       setPhase("idle");
-      const aborted = e instanceof DOMException && e.name === "AbortError";
+      // 限流等服务端给的中文提示原样显示；其余统一说人话
       setErrorMsg(
-        aborted
-          ? "这一句等得有点久，没有送达。稍等一下，再发一次。"
-          : e instanceof Error && e.message && !["empty", "回复失败", "Failed to fetch"].includes(e.message) && /[\u4e00-\u9fa5]/.test(e.message)
-            ? e.message
-            : "这一句没有送出去，网络好像有点慢。再试一次吧。"
+        e instanceof AskError && e.status === 429 && e.message
+          ? e.message
+          : "这一句没有送出去，网络好像有点慢。再试一次吧。"
       );
     } finally {
-      clearTimeout(timer);
+      clearTimeout(slowTimer);
+      setSlowHint(false);
       busyRef.current = false;
       setPhase("idle");
       inputRef.current?.focus();
@@ -319,16 +302,10 @@ export default function AskPage() {
     setFinishing(true);
     setLoading(true);
     try {
-      const res = await fetch(ASK_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          mode: "finish",
-          messages,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "结束失败");
+      const data = await postAsk<{
+        messages?: Message[];
+        insight?: { matter: string; care: string; see: string };
+      }>({ mode: "finish", messages });
       if (!data.insight) throw new Error("未生成自见");
 
       let nextMessages: Message[] = data.messages || messages;
@@ -427,7 +404,7 @@ export default function AskPage() {
                   <span />
                 </div>
                 {phase === "thinking" ? (
-                  <span className="think-text">正在想……</span>
+                  <span className="think-text">{slowHint ? "正在唤醒，稍等几秒…" : "正在想……"}</span>
                 ) : (
                   <span className="sr-only">正在输入</span>
                 )}

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   getTodayCount,
@@ -10,8 +10,10 @@ import {
   getDraft,
   upsertSessionPartial,
 } from "@/lib/storage";
-import { ASK_URL } from "@/lib/api";
+import { postAsk, warmUp, FRIENDLY_SLOW } from "@/lib/request";
 import type { Message } from "@/lib/types";
+
+const BASE_PATH = process.env.NEXT_PUBLIC_BASE_PATH || "";
 
 export default function HomePage() {
   const router = useRouter();
@@ -20,6 +22,21 @@ export default function HomePage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [hasResume, setHasResume] = useState(false);
+  const [loadingText, setLoadingText] = useState("正在进入…");
+  const busyRef = useRef(false);
+
+  useEffect(() => {
+    warmUp();
+    // 从后退缓存恢复（如微信里返回）时，按钮复位
+    const onShow = (e: PageTransitionEvent) => {
+      if (e.persisted) {
+        busyRef.current = false;
+        setLoading(false);
+      }
+    };
+    window.addEventListener("pageshow", onShow);
+    return () => window.removeEventListener("pageshow", onShow);
+  }, []);
 
   useEffect(() => {
     setTodayCount(getTodayCount());
@@ -33,17 +50,21 @@ export default function HomePage() {
       setError("此刻，你的心里有什么困惑？先写下吧。");
       return;
     }
+    if (busyRef.current) return;
+    busyRef.current = true;
     setError("");
     setLoading(true);
+    setLoadingText("正在进入…");
+    // 超过 6 秒还没回来，多半是云端在冷启动
+    const slowTimer = setTimeout(() => setLoadingText("正在唤醒，稍等几秒…"), 6000);
+    let navigated = false;
     try {
-      const res = await fetch(ASK_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mode: "start", concern: text }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || "开始失败");
+      const data = await postAsk<{ messages?: Message[] }>(
+        { mode: "start", concern: text },
+        { onRetry: () => setLoadingText("正在唤醒，稍等几秒…") }
+      );
+      if (!Array.isArray(data.messages) || data.messages.length < 2) {
+        throw new Error(FRIENDLY_SLOW);
       }
       const sessionId = createId();
       setDraft({
@@ -54,16 +75,29 @@ export default function HomePage() {
       upsertSessionPartial({
         id: sessionId,
         concern: text,
-        messages: data.messages as Message[],
+        messages: data.messages,
       });
       if (typeof window !== "undefined") {
         sessionStorage.setItem("wenji_concern", text);
         sessionStorage.setItem("wenji_reveal", "1");
       }
+      navigated = true;
       router.push("/ask");
+      // 个别内置浏览器里客户端跳转偶发失败：4 秒后仍在首页就整页跳转
+      setTimeout(() => {
+        const here = window.location.pathname.replace(/\/+$/, "");
+        if (here === BASE_PATH || here === "") {
+          window.location.assign(`${BASE_PATH}/ask/`);
+        }
+      }, 4000);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "网络异常，请稍后再试");
-      setLoading(false);
+      setError(e instanceof Error && e.message ? e.message : FRIENDLY_SLOW);
+    } finally {
+      clearTimeout(slowTimer);
+      if (!navigated) {
+        busyRef.current = false;
+        setLoading(false);
+      }
     }
   }
 
@@ -108,6 +142,8 @@ export default function HomePage() {
         />
         {error ? (
           <p
+            className="home-error"
+            role="alert"
             style={{
               marginTop: 10,
               fontSize: 13,
@@ -124,7 +160,7 @@ export default function HomePage() {
             disabled={loading}
             type="button"
           >
-            {loading ? "正在进入…" : "开始问己"}
+            {loading ? loadingText : "开始问己"}
           </button>
         </div>
         {hasResume ? (
